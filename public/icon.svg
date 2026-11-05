@@ -1,5 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#292018"/>
-  <circle cx="256" cy="256" r="168" fill="#c27c44" opacity="0.3"/>
-  <circle cx="256" cy="256" r="104" fill="#c27c44" opacity="0.75"/>
+  <defs>
+    <radialGradient id="glow">
+      <stop offset="0" stop-color="#f0c4a4"/>
+      <stop offset="1" stop-color="#f0c4a4" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" fill="#f7f2ec"/>
+  <circle cx="256" cy="256" r="200" fill="url(#glow)"/>
+  <circle cx="256" cy="256" r="96" fill="#dfa47c"/>
 </svg>

@@ -1,4 +1,41 @@
 @import "tailwindcss";
+@import "@fontsource-variable/nunito";
+
+/* Soft, light palette. Text colours meet WCAG AA on the canvas. */
+@theme {
+  --font-sans: "Nunito Variable", ui-sans-serif, system-ui, sans-serif;
+
+  --color-canvas: #f7f2ec;
+  --color-canvas-deep: #f1e8de;
+  --color-surface: #fffcf8;
+  --color-blush: #fbe8da;
+  --color-line: #ebe1d6;
+
+  --color-ink: #4f4037;
+  --color-ink-soft: #76634f;
+  --color-clay: #9a6038;
+
+  --color-glow: #f0c4a4;
+  --color-glow-deep: #dfa47c;
+
+  --color-calm: #e3ecf3;
+  --color-calm-line: #cddbe7;
+  --color-calm-ink: #4d6c87;
+
+  --color-alert: #f6e0dc;
+  --color-alert-line: #ecc8c1;
+  --color-alert-ink: #a24f45;
+}
 
 /* Compact spacing on short screens so everything fits without scrolling. */
 @custom-variant short (@media (max-height: 720px));
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  -webkit-tap-highlight-color: transparent;
+}
