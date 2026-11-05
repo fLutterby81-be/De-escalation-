@@ -4,7 +4,7 @@
  * build time (for example in the Vercel project settings).
  * The button stays hidden while no valid https link is set.
  */
-const DEFAULT_BUY_ME_A_COFFEE_URL = '';
+const DEFAULT_BUY_ME_A_COFFEE_URL = 'https://buymeacoffee.com/flutterby_81';
 
 function httpsOnly(url: string | undefined): string {
   const trimmed = url?.trim() ?? '';
