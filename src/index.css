@@ -1,4 +1,86 @@
 @import "tailwindcss";
+@import "@fontsource-variable/nunito";
+
+/* Soft, light palette. Text colours meet WCAG AA on the canvas. */
+@theme {
+  --font-sans: "Nunito Variable", ui-sans-serif, system-ui, sans-serif;
+
+  --color-canvas: #f7f2ec;
+  --color-canvas-deep: #f1e8de;
+  --color-surface: #fffcf8;
+  --color-blush: #fbe8da;
+  --color-line: #ebe1d6;
+
+  --color-ink: #4f4037;
+  --color-ink-soft: #76634f;
+  --color-clay: #9a6038;
+
+  --color-glow: #f0c4a4;
+  --color-glow-deep: #dfa47c;
+
+  --color-calm: #e3ecf3;
+  --color-calm-line: #cddbe7;
+  --color-calm-ink: #4d6c87;
+
+  --color-alert: #f6e0dc;
+  --color-alert-line: #ecc8c1;
+  --color-alert-ink: #a24f45;
+}
 
 /* Compact spacing on short screens so everything fits without scrolling. */
 @custom-variant short (@media (max-height: 720px));
+
+:root {
+  color-scheme: light;
+  --shadow-button: 0 14px 36px -18px rgba(120, 88, 60, 0.35);
+  --shadow-soft: 0 10px 28px -16px rgba(120, 88, 60, 0.35);
+  --shadow-calm: 0 10px 24px -12px rgba(77, 108, 135, 0.45);
+  --shadow-alert: 0 10px 24px -12px rgba(162, 79, 69, 0.45);
+}
+
+/*
+ * Soft night palette: warm and dim instead of black and white.
+ * The .dark class is set by useTheme() and, before first paint, by index.html.
+ */
+:root.dark {
+  color-scheme: dark;
+
+  --color-canvas: #1f1a17;
+  --color-canvas-deep: #191512;
+  --color-surface: #2a2420;
+  --color-blush: #3a2c24;
+  --color-line: #3a322c;
+
+  --color-ink: #e2d6c9;
+  --color-ink-soft: #a8988a;
+  --color-clay: #d39c76;
+
+  --color-glow: #7a4e33;
+  --color-glow-deep: #c88a62;
+
+  --color-calm: #1f2a33;
+  --color-calm-line: #2e3d4a;
+  --color-calm-ink: #9fbcd4;
+
+  --color-alert: #35211f;
+  --color-alert-line: #4d2f2b;
+  --color-alert-ink: #e3a198;
+
+  --shadow-button: 0 14px 36px -18px rgba(0, 0, 0, 0.7);
+  --shadow-soft: 0 10px 28px -16px rgba(0, 0, 0, 0.6);
+  --shadow-calm: 0 10px 24px -12px rgba(0, 0, 0, 0.6);
+  --shadow-alert: 0 10px 24px -12px rgba(0, 0, 0, 0.6);
+}
+
+/* Gentle cross-fade when the theme is switched by hand. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.6s;
+  animation-timing-function: ease-in-out;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  -webkit-tap-highlight-color: transparent;
+}

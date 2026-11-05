@@ -17,7 +17,11 @@ Verder bevat de app:
 - een rustig ademend achtergrondgeluid (bruine ruis) dat je aan en uit zet;
 - een knop naar 112 en een knop naar een chathulplijn
   (Zelfmoordlijn 1813 in het Nederlands, findahelpline.com in het Engels);
-- Nederlands en Engels, automatisch gekozen op basis van de browsertaal.
+- Nederlands en Engels, automatisch gekozen op basis van de browsertaal;
+- een licht, zacht ontwerp overdag en een gedimde donkere modus 's nachts;
+  de donkere modus gaat aan tussen 21 en 7 uur of als het toestel in donkere modus staat;
+- een knop met een maan of zon om zelf te wisselen; die keuze wordt onthouden,
+  en wie terugkiest wat automatisch zou gelden, gaat terug naar automatisch.
 
 ## Lokaal draaien
 
@@ -46,3 +50,4 @@ De map `dist/` kan op elke statische host gezet worden.
 - `src/instructions.ts` bevat alle stappen en de regels om de volgende te kiezen.
 - `src/audio.ts` genereert het achtergrondgeluid met de Web Audio API.
 - `src/i18n.ts` bevat de teksten van de interface en de taalkeuze.
+- `src/theme.ts` kiest tussen licht en donker; de kleuren staan in `src/index.css`.

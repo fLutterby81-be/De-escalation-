@@ -4,8 +4,8 @@
   "description": "Een prikkelarme applicatie voor acute de-escalatie.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#292018",
-  "theme_color": "#292018",
+  "background_color": "#f7f2ec",
+  "theme_color": "#f7f2ec",
   "icons": [
     {
       "src": "/icon.svg",
