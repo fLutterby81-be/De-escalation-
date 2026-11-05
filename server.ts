@@ -1,82 +1,100 @@
+import "dotenv/config";
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
+import {
+  SYSTEM_INSTRUCTION,
+  buildPrompt,
+  cleanInstruction,
+  parseInstructionRequest,
+} from "./server/instruction";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const PORT = Number(process.env.PORT) || 3000;
+// gemini-2.0-flash was shut down on 1 June 2026. Flash-Lite is the fastest and
+// cheapest current model and is plenty for a two-sentence micro-instruction.
+const MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+const REQUEST_TIMEOUT_MS = 10_000;
+
+const apiKey = process.env.GEMINI_API_KEY;
+const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
+
+/** The SDK's own message is often empty; the API's message lives in the body. */
+function describeError(error: unknown): string {
+  const err = error as { status?: number; body?: unknown; message?: string } | null;
+  let detail = err?.message ?? String(error);
+  if (typeof err?.body === "string") {
+    try {
+      const parsed = JSON.parse(err.body);
+      const first = Array.isArray(parsed) ? parsed[0] : parsed;
+      if (typeof first?.error?.message === "string") detail = first.error.message;
+    } catch {
+      // Not JSON: keep the SDK message.
+    }
+  }
+  return `${err?.status ?? "unknown status"}: ${detail}`;
+}
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
-
-  app.use(express.json());
+  app.use(express.json({ limit: "4kb" }));
 
   app.post("/api/generate-instruction", async (req, res) => {
+    // Without a key the client falls back to its built-in instructions.
+    if (!ai) {
+      res.status(503).json({ error: "ai_unavailable" });
+      return;
+    }
+
     try {
-      const { timeSinceLastAction, actionCount = 0, timeOfDay = "dag", language = "en" } = req.body;
-      
-      let pacingContext = "";
-      if (timeSinceLastAction !== undefined) {
-        if (timeSinceLastAction < 4000) {
-          pacingContext = "De gebruiker klikt erg snel (minder dan 4 seconden). Ze zijn mogelijk in paniek of gehaast. Geef extreem kleine, geruststellende instructies om te aarden.";
-        } else if (timeSinceLastAction > 20000) {
-          pacingContext = "De gebruiker wacht lang tussen acties (meer dan 20 seconden). Ze zitten mogelijk vast in een diepe 'freeze'. Geef een uiterst minimale, niet-bedreigende fysieke instructie.";
-        } else {
-          pacingContext = "De gebruiker volgt een gemiddeld tempo. Blijf gestage, veilige instructies geven.";
-        }
-      }
-
-      const countContext = actionCount > 5 
-        ? "De gebruiker heeft al meerdere stappen gedaan en bouwt momentum op. Je mag iets meer actieve instructies geven (zoals strekken of om zich heen kijken)." 
-        : "De gebruiker is pas net begonnen. Houd de instructies uiterst klein en lokaal.";
-
-      const timeContext = `Het is nu de ${timeOfDay}. Pas de toon of instructie subtiel hierop aan als dat passend is (bijv. rustig in de avond, iets opwekkender in de ochtend).`;
-      const langContext = language === "en" ? "Geef de instructie uitsluitend in het Engels." : "Geef de instructie uitsluitend in het Nederlands.";
-
-      const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
-        contents: `De gebruiker heeft op de 'Help me' of 'Nog eentje' knop gedrukt.\n${pacingContext}\n${countContext}\n${timeContext}\n${langContext}\nGeef een micro-instructie.`,
-        config: {
-          systemInstruction: `Je bent een de-escalatie assistent ontworpen om gebruikers te helpen die acute fysieke en emotionele overprikkeling ervaren, of die vastzitten in een 'freeze' respons.
-
-Jouw absolute regels:
-1. Gebruik nooit meer dan twee korte zinnen.
-2. Stel geen open vragen (zoals "Hoe voel je je?" of "Waarom?").
-3. Toon empathie niet via lange teksten of analyses, maar door direct een veilige oplossing te bieden.
-4. Geef altijd precies één fysieke micro-stap als opdracht (bijv. "Kijk naar links", "Beweeg je pink", "Haal één keer diep adem").
-5. Als de gebruiker aangeeft nog steeds vast te zitten, breek de actie dan op in een nog kleinere , fysiek minder eisende stap.`,
-          temperature: 0.7,
+      const request = parseInstructionRequest(req.body);
+      const interaction = await ai.interactions.create(
+        {
+          model: MODEL,
+          input: buildPrompt(request),
+          system_instruction: SYSTEM_INSTRUCTION,
+          // Requests describe someone in distress; do not keep them server side.
+          store: false,
         },
-      });
+        { timeout_ms: REQUEST_TIMEOUT_MS },
+      );
 
-      const instruction = response.text || (language === "en" ? "Take one deep breath." : "Haal één keer diep adem.");
-      res.json({ instruction });
-    } catch (error: any) {
-      if (error?.status !== 429 && error?.error?.code !== 429) {
-        console.error("Error calling Gemini API:", error);
+      const instruction = cleanInstruction(interaction.output_text);
+      if (!instruction) {
+        res.status(502).json({ error: "empty_response" });
+        return;
       }
-      res.status(500).json({ instruction: req.body.language === "en" ? "Only move your right index finger." : "Beweeg alleen je rechter wijsvinger." }); // Fallback on error
+      res.json({ instruction });
+    } catch (error: unknown) {
+      console.error(`Gemini request failed (${describeError(error)})`);
+      res.status(502).json({ error: "ai_failed" });
     }
   });
 
-  // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
+    // Imported lazily so the production bundle never loads Vite.
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+    app.get("*", (_req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
     });
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Server running on http://localhost:${PORT} (model: ${MODEL})`);
+    if (!ai) {
+      console.warn("GEMINI_API_KEY is not set: the app will only use its built-in instructions.");
+    }
   });
 }
 
-startServer();
+startServer().catch((error) => {
+  console.error("Failed to start server:", error);
+  process.exit(1);
+});

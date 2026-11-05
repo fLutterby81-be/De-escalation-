@@ -1,1 +1,4 @@
 @import "tailwindcss";
+
+/* Compact spacing on short screens so everything fits without scrolling. */
+@custom-variant short (@media (max-height: 720px));
