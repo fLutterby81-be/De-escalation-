@@ -1,10 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, MotionConfig } from 'motion/react';
-import { Volume2, VolumeX, Phone, MessageCircle } from 'lucide-react';
+import { Volume2, VolumeX, Phone, MessageCircle, Moon, Sun } from 'lucide-react';
 import { audioEngine } from './audio';
 import { type Language, getInitialLanguage, saveLanguage, translations } from './i18n';
 import { chooseIntensity, pickInstruction } from './instructions';
-import { type Theme, useTheme } from './theme';
+import { useTheme } from './theme';
 
 /** Length of one progressive calming cycle on the Help me button. */
 const HELP_CYCLE_MS = 30_000;
@@ -12,41 +12,6 @@ const HISTORY_SIZE = 3;
 
 /** Keyboard focus ring shared by all controls. */
 const focusRing = 'focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-glow-deep';
-
-/**
- * Animated states of the Help me button per theme. Motion needs literal
- * values, so these mirror the colour tokens in index.css.
- */
-const helpButtonStyle: Record<Theme, Record<'idle' | 'active', Record<string, string | number>>> = {
-  light: {
-    idle: {
-      scale: 1,
-      backgroundColor: '#fffcf8',
-      borderColor: '#ebe1d6',
-      boxShadow: '0 14px 36px -18px rgba(120, 88, 60, 0.35)',
-    },
-    active: {
-      scale: 1.03,
-      backgroundColor: '#fbe8da',
-      borderColor: 'rgba(223, 164, 124, 0.6)',
-      boxShadow: '0 20px 48px -18px rgba(223, 164, 124, 0.65)',
-    },
-  },
-  dark: {
-    idle: {
-      scale: 1,
-      backgroundColor: '#2a2420',
-      borderColor: '#3a322c',
-      boxShadow: '0 14px 36px -18px rgba(0, 0, 0, 0.7)',
-    },
-    active: {
-      scale: 1.03,
-      backgroundColor: '#3a2c24',
-      borderColor: 'rgba(200, 138, 98, 0.5)',
-      boxShadow: '0 20px 48px -18px rgba(200, 138, 98, 0.35)',
-    },
-  },
-};
 
 interface Step {
   id: number;
@@ -62,7 +27,7 @@ export default function App() {
   const [progressCycle, setProgressCycle] = useState(0);
 
   const t = translations[language];
-  const theme = useTheme();
+  const { theme, toggleTheme } = useTheme();
 
   const stepCount = useRef(0);
   const stepId = useRef(0);
@@ -191,14 +156,25 @@ export default function App() {
             {language}
           </button>
 
-          <button
-            onClick={toggleAudio}
-            className={`p-3 text-ink-soft hover:text-ink transition-colors cursor-pointer rounded-full ${focusRing}`}
-            aria-label={isAudioEnabled ? t.soundOff : t.soundOn}
-            aria-pressed={isAudioEnabled}
-          >
-            {isAudioEnabled ? <Volume2 size={26} strokeWidth={1.75} /> : <VolumeX size={26} strokeWidth={1.75} />}
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={toggleTheme}
+              className={`p-3 text-ink-soft hover:text-ink transition-colors cursor-pointer rounded-full ${focusRing}`}
+              aria-label={theme === 'dark' ? t.themeToLight : t.themeToDark}
+              title={theme === 'dark' ? t.themeToLight : t.themeToDark}
+            >
+              {theme === 'dark' ? <Sun size={24} strokeWidth={1.75} /> : <Moon size={24} strokeWidth={1.75} />}
+            </button>
+
+            <button
+              onClick={toggleAudio}
+              className={`p-3 text-ink-soft hover:text-ink transition-colors cursor-pointer rounded-full ${focusRing}`}
+              aria-label={isAudioEnabled ? t.soundOff : t.soundOn}
+              aria-pressed={isAudioEnabled}
+            >
+              {isAudioEnabled ? <Volume2 size={26} strokeWidth={1.75} /> : <VolumeX size={26} strokeWidth={1.75} />}
+            </button>
+          </div>
         </header>
 
         <main className="relative z-10 flex-1 flex items-center justify-center px-6">
@@ -221,11 +197,22 @@ export default function App() {
               <motion.button
                 onClick={showNextStep}
                 initial={false}
-                animate={helpButtonStyle[theme][isHelpActive ? 'active' : 'idle']}
+                animate={{ scale: isHelpActive ? 1.03 : 1 }}
                 transition={{ duration: isHelpActive ? HELP_CYCLE_MS / 1000 : 0.8, ease: 'easeInOut' }}
                 whileTap={{ scale: 0.98 }}
-                className={`relative w-full py-10 short:py-7 text-ink text-3xl font-semibold tracking-wide rounded-[2rem] border flex flex-col items-center justify-center overflow-hidden cursor-pointer ${focusRing}`}
+                className={`relative w-full py-10 short:py-7 bg-surface text-ink text-3xl font-semibold tracking-wide rounded-[2rem] ring-1 ring-inset ring-line shadow-(--shadow-button) flex flex-col items-center justify-center overflow-hidden cursor-pointer ${focusRing}`}
               >
+                {/*
+                 * Blush layer that fades in over the 30s cycle. Its colours are
+                 * theme tokens, so a theme switch applies instantly mid-bloom.
+                 */}
+                <motion.div
+                  initial={false}
+                  animate={{ opacity: isHelpActive ? 1 : 0 }}
+                  transition={{ duration: isHelpActive ? HELP_CYCLE_MS / 1000 : 0.8, ease: 'easeInOut' }}
+                  className="absolute inset-0 rounded-[inherit] bg-blush ring-1 ring-inset ring-glow-deep/60 pointer-events-none"
+                />
+
                 {/* Inner warm gradient */}
                 <AnimatePresence>
                   {isHelpActive && (

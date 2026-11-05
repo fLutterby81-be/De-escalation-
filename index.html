@@ -12,13 +12,19 @@
     <link rel="manifest" href="/manifest.json" />
     <title>De-escalation</title>
     <script>
-      // Apply the night theme before first paint to avoid a light flash.
-      // Same rule as src/theme.ts: device dark mode, or 21:00 to 07:00.
+      // Apply the theme before first paint to avoid a light flash at night.
+      // Same rules as src/theme.ts: a saved manual choice wins, otherwise
+      // dark when the device is in dark mode or between 21:00 and 07:00.
       (function () {
+        var saved = null;
+        try {
+          saved = localStorage.getItem('de-escalation:theme');
+        } catch (e) {}
         var hour = new Date().getHours();
         var night = hour >= 21 || hour < 7;
         var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        if (night || prefersDark) {
+        var dark = saved === 'dark' || (saved !== 'light' && (night || prefersDark));
+        if (dark) {
           document.documentElement.classList.add('dark');
           document.querySelector('meta[name="theme-color"]').setAttribute('content', '#1f1a17');
         }

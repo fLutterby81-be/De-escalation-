@@ -19,7 +19,9 @@ Verder bevat de app:
   (Zelfmoordlijn 1813 in het Nederlands, findahelpline.com in het Engels);
 - Nederlands en Engels, automatisch gekozen op basis van de browsertaal;
 - een licht, zacht ontwerp overdag en een gedimde donkere modus 's nachts;
-  de donkere modus gaat aan tussen 21 en 7 uur of als het toestel in donkere modus staat.
+  de donkere modus gaat aan tussen 21 en 7 uur of als het toestel in donkere modus staat;
+- een knop met een maan of zon om zelf te wisselen; die keuze wordt onthouden,
+  en wie terugkiest wat automatisch zou gelden, gaat terug naar automatisch.
 
 ## Lokaal draaien
 

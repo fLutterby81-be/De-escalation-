@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isNight, resolveTheme } from './theme';
+import { isNight, nextThemeMode, resolveTheme } from './theme';
 
 const at = (hour: number, minute = 0) => new Date(2026, 10, 5, hour, minute);
 
@@ -18,4 +18,13 @@ test('resolveTheme is dark at night or when the device prefers dark', () => {
   assert.equal(resolveTheme(false, at(23)), 'dark');
   assert.equal(resolveTheme(true, at(12)), 'dark');
   assert.equal(resolveTheme(true, at(23)), 'dark');
+});
+
+test('nextThemeMode flips the screen and returns to auto when that matches', () => {
+  // Daytime, automatic is light.
+  assert.equal(nextThemeMode('light', 'light'), 'dark');
+  assert.equal(nextThemeMode('dark', 'light'), 'auto');
+  // Night, automatic is dark.
+  assert.equal(nextThemeMode('dark', 'dark'), 'light');
+  assert.equal(nextThemeMode('light', 'dark'), 'auto');
 });
