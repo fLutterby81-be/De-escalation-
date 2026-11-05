@@ -32,6 +32,42 @@
 
 :root {
   color-scheme: light;
+  --shadow-soft: 0 10px 28px -16px rgba(120, 88, 60, 0.35);
+  --shadow-calm: 0 10px 24px -12px rgba(77, 108, 135, 0.45);
+  --shadow-alert: 0 10px 24px -12px rgba(162, 79, 69, 0.45);
+}
+
+/*
+ * Soft night palette: warm and dim instead of black and white.
+ * The .dark class is set by useTheme() and, before first paint, by index.html.
+ */
+:root.dark {
+  color-scheme: dark;
+
+  --color-canvas: #1f1a17;
+  --color-canvas-deep: #191512;
+  --color-surface: #2a2420;
+  --color-blush: #3a2c24;
+  --color-line: #3a322c;
+
+  --color-ink: #e2d6c9;
+  --color-ink-soft: #a8988a;
+  --color-clay: #d39c76;
+
+  --color-glow: #7a4e33;
+  --color-glow-deep: #c88a62;
+
+  --color-calm: #1f2a33;
+  --color-calm-line: #2e3d4a;
+  --color-calm-ink: #9fbcd4;
+
+  --color-alert: #35211f;
+  --color-alert-line: #4d2f2b;
+  --color-alert-ink: #e3a198;
+
+  --shadow-soft: 0 10px 28px -16px rgba(0, 0, 0, 0.6);
+  --shadow-calm: 0 10px 24px -12px rgba(0, 0, 0, 0.6);
+  --shadow-alert: 0 10px 24px -12px rgba(0, 0, 0, 0.6);
 }
 
 body {

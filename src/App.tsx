@@ -4,6 +4,7 @@ import { Volume2, VolumeX, Phone, MessageCircle } from 'lucide-react';
 import { audioEngine } from './audio';
 import { type Language, getInitialLanguage, saveLanguage, translations } from './i18n';
 import { chooseIntensity, pickInstruction } from './instructions';
+import { type Theme, useTheme } from './theme';
 
 /** Length of one progressive calming cycle on the Help me button. */
 const HELP_CYCLE_MS = 30_000;
@@ -12,19 +13,38 @@ const HISTORY_SIZE = 3;
 /** Keyboard focus ring shared by all controls. */
 const focusRing = 'focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-glow-deep';
 
-/** Animated states of the Help me button; values mirror the theme in index.css. */
-const helpButtonStyle = {
-  idle: {
-    scale: 1,
-    backgroundColor: '#fffcf8',
-    borderColor: '#ebe1d6',
-    boxShadow: '0 14px 36px -18px rgba(120, 88, 60, 0.35)',
+/**
+ * Animated states of the Help me button per theme. Motion needs literal
+ * values, so these mirror the colour tokens in index.css.
+ */
+const helpButtonStyle: Record<Theme, Record<'idle' | 'active', Record<string, string | number>>> = {
+  light: {
+    idle: {
+      scale: 1,
+      backgroundColor: '#fffcf8',
+      borderColor: '#ebe1d6',
+      boxShadow: '0 14px 36px -18px rgba(120, 88, 60, 0.35)',
+    },
+    active: {
+      scale: 1.03,
+      backgroundColor: '#fbe8da',
+      borderColor: 'rgba(223, 164, 124, 0.6)',
+      boxShadow: '0 20px 48px -18px rgba(223, 164, 124, 0.65)',
+    },
   },
-  active: {
-    scale: 1.03,
-    backgroundColor: '#fbe8da',
-    borderColor: 'rgba(223, 164, 124, 0.6)',
-    boxShadow: '0 20px 48px -18px rgba(223, 164, 124, 0.65)',
+  dark: {
+    idle: {
+      scale: 1,
+      backgroundColor: '#2a2420',
+      borderColor: '#3a322c',
+      boxShadow: '0 14px 36px -18px rgba(0, 0, 0, 0.7)',
+    },
+    active: {
+      scale: 1.03,
+      backgroundColor: '#3a2c24',
+      borderColor: 'rgba(200, 138, 98, 0.5)',
+      boxShadow: '0 20px 48px -18px rgba(200, 138, 98, 0.35)',
+    },
   },
 };
 
@@ -42,6 +62,7 @@ export default function App() {
   const [progressCycle, setProgressCycle] = useState(0);
 
   const t = translations[language];
+  const theme = useTheme();
 
   const stepCount = useRef(0);
   const stepId = useRef(0);
@@ -200,7 +221,7 @@ export default function App() {
               <motion.button
                 onClick={showNextStep}
                 initial={false}
-                animate={isHelpActive ? helpButtonStyle.active : helpButtonStyle.idle}
+                animate={helpButtonStyle[theme][isHelpActive ? 'active' : 'idle']}
                 transition={{ duration: isHelpActive ? HELP_CYCLE_MS / 1000 : 0.8, ease: 'easeInOut' }}
                 whileTap={{ scale: 0.98 }}
                 className={`relative w-full py-10 short:py-7 text-ink text-3xl font-semibold tracking-wide rounded-[2rem] border flex flex-col items-center justify-center overflow-hidden cursor-pointer ${focusRing}`}
@@ -261,7 +282,7 @@ export default function App() {
               <div className="w-full flex flex-col gap-3">
                 <button
                   onClick={showNextStep}
-                  className={`w-full py-4 bg-surface/80 hover:bg-surface active:bg-blush text-ink text-lg font-semibold rounded-full border border-line shadow-[0_10px_28px_-16px_rgba(120,88,60,0.35)] transition-colors cursor-pointer ${focusRing}`}
+                  className={`w-full py-4 bg-surface/80 hover:bg-surface active:bg-blush text-ink text-lg font-semibold rounded-full border border-line shadow-(--shadow-soft) transition-colors cursor-pointer ${focusRing}`}
                 >
                   {t.oneMore}
                 </button>
@@ -312,7 +333,7 @@ export default function App() {
           href={t.chatUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className={`fixed bottom-6 left-6 z-50 p-4 bg-calm hover:bg-calm-line text-calm-ink border border-calm-line rounded-full shadow-[0_10px_24px_-12px_rgba(77,108,135,0.45)] transition-colors flex items-center justify-center ${focusRing}`}
+          className={`fixed bottom-6 left-6 z-50 p-4 bg-calm hover:bg-calm-line text-calm-ink border border-calm-line rounded-full shadow-(--shadow-calm) transition-colors flex items-center justify-center ${focusRing}`}
           aria-label={t.chat}
           title={t.chat}
         >
@@ -321,7 +342,7 @@ export default function App() {
 
         <a
           href="tel:112"
-          className={`fixed bottom-6 right-6 z-50 p-4 bg-alert hover:bg-alert-line text-alert-ink border border-alert-line rounded-full shadow-[0_10px_24px_-12px_rgba(162,79,69,0.45)] transition-colors flex items-center justify-center ${focusRing}`}
+          className={`fixed bottom-6 right-6 z-50 p-4 bg-alert hover:bg-alert-line text-alert-ink border border-alert-line rounded-full shadow-(--shadow-alert) transition-colors flex items-center justify-center ${focusRing}`}
           aria-label={t.emergency}
           title={t.emergency}
         >
