@@ -1,9 +1,16 @@
 # De-escalation
 
 Een prikkelarme web-app voor acute overprikkeling of een "freeze"-reactie.
-Eén knop, **Help me**, geeft telkens één kleine fysieke stap. Gemini past de stap
-aan aan het tempo van de gebruiker, het aantal stappen en het moment van de dag.
-Zonder netwerk of API-sleutel valt de app direct terug op ingebouwde stappen.
+Eén knop, **Help me**, geeft telkens één kleine fysieke stap. De app kiest de stap
+op basis van het tempo van de gebruiker en het aantal stappen dat al gezet is.
+Alles gebeurt in de browser: er is geen server en er gaat geen gegeven naar buiten.
+
+Hoe de volgende stap gekozen wordt:
+
+- de eerste stap, snel klikken of lang wachten geeft een uiterst kleine stap;
+- bij een rustig tempo volgt een kleine, veilige stap;
+- na meer dan vijf stappen in een rustig tempo mag de stap iets actiever zijn;
+- de laatste vier getoonde stappen worden niet herhaald.
 
 Verder bevat de app:
 
@@ -18,32 +25,24 @@ Vereist Node.js 20 of nieuwer.
 
 ```bash
 npm install
-cp .env.example .env   # vul GEMINI_API_KEY in
 npm run dev            # http://localhost:3000
 ```
 
 ## Scripts
 
-| Script          | Wat het doet                                              |
-| --------------- | --------------------------------------------------------- |
-| `npm run dev`   | Express-server met Vite-middleware en hot reload          |
-| `npm run build` | Bouwt de frontend en bundelt de server naar `dist/`       |
-| `npm start`     | Start de gebouwde productieserver uit `dist/`             |
-| `npm test`      | Unit tests voor de promptopbouw en invoervalidatie        |
-| `npm run lint`  | TypeScript-typecheck                                      |
+| Script            | Wat het doet                                      |
+| ----------------- | ------------------------------------------------- |
+| `npm run dev`     | Ontwikkelserver met hot reload                    |
+| `npm run build`   | Bouwt de statische site naar `dist/`              |
+| `npm run preview` | Toont de gebouwde site uit `dist/`                |
+| `npm test`        | Unit tests voor de keuze van de stappen           |
+| `npm run lint`    | TypeScript-typecheck                              |
 
-## Configuratie
-
-| Variabele        | Standaard               | Uitleg                                  |
-| ---------------- | ----------------------- | --------------------------------------- |
-| `GEMINI_API_KEY` | geen                    | Zonder sleutel gebruikt de app alleen de ingebouwde stappen. |
-| `GEMINI_MODEL`   | `gemini-3.5-flash-lite` | Gemini-model voor de micro-instructies. |
-| `PORT`           | `3000`                  | Poort van de server.                    |
+De map `dist/` kan op elke statische host gezet worden.
 
 ## Structuur
 
-- `server.ts` is de Express-server met het endpoint `POST /api/generate-instruction`.
-- `server/instruction.ts` valideert de invoer, bouwt de prompt en schoont het antwoord op.
 - `src/App.tsx` bevat de volledige interface.
+- `src/instructions.ts` bevat alle stappen en de regels om de volgende te kiezen.
 - `src/audio.ts` genereert het achtergrondgeluid met de Web Audio API.
-- `src/i18n.ts` bevat de teksten, ingebouwde stappen en taalkeuze.
+- `src/i18n.ts` bevat de teksten van de interface en de taalkeuze.

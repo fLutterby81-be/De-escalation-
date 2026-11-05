@@ -2,27 +2,15 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, MotionConfig } from 'motion/react';
 import { Volume2, VolumeX, Phone, MessageCircle } from 'lucide-react';
 import { audioEngine } from './audio';
-import {
-  type Language,
-  getInitialLanguage,
-  getTimeOfDay,
-  pickFallback,
-  saveLanguage,
-  translations,
-} from './i18n';
+import { type Language, getInitialLanguage, saveLanguage, translations } from './i18n';
+import { chooseIntensity, pickInstruction } from './instructions';
 
 /** Length of one progressive calming cycle on the Help me button. */
 const HELP_CYCLE_MS = 30_000;
-const FETCH_TIMEOUT_MS = 12_000;
 const HISTORY_SIZE = 3;
 
 interface Step {
   id: number;
-  text: string;
-}
-
-interface Prefetched {
-  language: Language;
   text: string;
 }
 
@@ -36,66 +24,17 @@ export default function App() {
 
   const t = translations[language];
 
-  const nextInstruction = useRef<Prefetched | null>(null);
-  const pendingRequest = useRef<AbortController | null>(null);
   const stepCount = useRef(0);
   const stepId = useRef(0);
   const helpStartTime = useRef(0);
   const lastActionTime = useRef(Date.now());
   const wakeLock = useRef<WakeLockSentinel | null>(null);
 
-  /**
-   * Fetches the instruction for the next click in the background. Starting a
-   * new request cancels the previous one, so a slow answer can never
-   * overwrite a newer one or arrive in the wrong language.
-   */
-  const prefetchInstruction = useCallback(
-    async (lang: Language, timeSinceLastAction?: number, actionCount = 0, recent: string[] = []) => {
-      pendingRequest.current?.abort();
-      const controller = new AbortController();
-      pendingRequest.current = controller;
-      nextInstruction.current = null;
-      const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
-      try {
-        const response = await fetch('/api/generate-instruction', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            language: lang,
-            timeSinceLastAction,
-            actionCount,
-            timeOfDay: getTimeOfDay(),
-            recent,
-          }),
-          signal: controller.signal,
-        });
-        if (!response.ok) return;
-
-        const data: unknown = await response.json();
-        const text =
-          typeof data === 'object' && data !== null && 'instruction' in data && typeof data.instruction === 'string'
-            ? data.instruction.trim()
-            : '';
-        if (text && pendingRequest.current === controller) {
-          nextInstruction.current = { language: lang, text };
-        }
-      } catch {
-        // Offline, aborted or timed out: the next click uses a built-in fallback.
-      } finally {
-        clearTimeout(timeout);
-      }
-    },
-    [],
-  );
-
-  // Keep the document language in sync and prefetch a first instruction.
+  // Keep the document language in sync and remember the choice.
   useEffect(() => {
     document.documentElement.lang = language;
     saveLanguage(language);
-    void prefetchInstruction(language);
-    return () => pendingRequest.current?.abort();
-  }, [language, prefetchInstruction]);
+  }, [language]);
 
   // Keep the screen awake while the app is open.
   useEffect(() => {
@@ -157,16 +96,12 @@ export default function App() {
       navigator.vibrate([200, 100, 200]);
     }
 
-    const previous = instruction?.text;
-    const prefetched = nextInstruction.current;
-    nextInstruction.current = null;
-
-    // Use the prefetched instruction when it is ready, otherwise fall back
-    // instantly so the user never waits on the network.
-    const text =
-      prefetched && prefetched.language === language && prefetched.text !== previous
-        ? prefetched.text
-        : pickFallback(language, previous);
+    // Match the step to the user's pace and progress, without repeating
+    // what was shown recently.
+    const recent = [instruction?.text, ...history.map((step) => step.text)].filter(
+      (text): text is string => Boolean(text),
+    );
+    const text = pickInstruction(language, chooseIntensity(timeSinceLast, stepCount.current), recent);
 
     if (instruction) {
       setHistory((prev) => [instruction, ...prev].slice(0, HISTORY_SIZE));
@@ -174,10 +109,7 @@ export default function App() {
     stepId.current += 1;
     setInstruction({ id: stepId.current, text });
     stepCount.current += 1;
-
-    const recent = [text, ...(previous ? [previous] : []), ...history.map((step) => step.text)].slice(0, HISTORY_SIZE);
-    void prefetchInstruction(language, timeSinceLast, stepCount.current, recent);
-  }, [instruction, history, isHelpActive, language, prefetchInstruction]);
+  }, [instruction, history, isHelpActive, language]);
 
   const handleFeelBetter = useCallback(() => {
     resetSession();
@@ -185,8 +117,7 @@ export default function App() {
       audioEngine.stop();
       setIsAudioEnabled(false);
     }
-    void prefetchInstruction(language);
-  }, [resetSession, isAudioEnabled, language, prefetchInstruction]);
+  }, [resetSession, isAudioEnabled]);
 
   const toggleLanguage = useCallback(() => {
     resetSession();
