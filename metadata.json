@@ -2,5 +2,5 @@
   "name": "De-escalation",
   "description": "Een prikkelarme applicatie voor acute de-escalatie.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": []
 }

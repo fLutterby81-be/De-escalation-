@@ -1,37 +1,66 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, MotionConfig } from 'motion/react';
 import { Volume2, VolumeX, Phone, MessageCircle } from 'lucide-react';
 import { audioEngine } from './audio';
+import { type Language, getInitialLanguage, saveLanguage, translations } from './i18n';
+import { chooseIntensity, pickInstruction } from './instructions';
 
-const fallbackActionsNL = [
-  "Beweeg alleen je rechter wijsvinger.",
-  "Haal één keer diep adem.",
-  "Kijk naar links.",
-  "Voel de grond onder je voeten.",
-  "Beweeg je pink.",
-  "Knipper twee keer langzaam met je ogen."
-];
+/** Length of one progressive calming cycle on the Help me button. */
+const HELP_CYCLE_MS = 30_000;
+const HISTORY_SIZE = 3;
 
-const fallbackActionsEN = [
-  "Only move your right index finger.",
-  "Take one deep breath.",
-  "Look to your left.",
-  "Feel the ground under your feet.",
-  "Move your pinky finger.",
-  "Blink twice slowly."
-];
+interface Step {
+  id: number;
+  text: string;
+}
 
 export default function App() {
-  const [language, setLanguage] = useState<"nl" | "en">("en");
-  const [instruction, setInstruction] = useState<string>("");
-  const [nextInstruction, setNextInstruction] = useState<string>("");
-  const [history, setHistory] = useState<string[]>([]);
-  const [isAudioEnabled, setIsAudioEnabled] = useState<boolean>(false);
-  const [isHelpActive, setIsHelpActive] = useState<boolean>(false);
-  const [progressCycle, setProgressCycle] = useState<number>(0);
-  const helpStartTimeRef = useRef<number>(0);
-  const wakeLock = useRef<any>(null);
-  const lastActionTime = useRef<number>(Date.now());
+  const [language, setLanguage] = useState<Language>(getInitialLanguage);
+  const [instruction, setInstruction] = useState<Step | null>(null);
+  const [history, setHistory] = useState<Step[]>([]);
+  const [isAudioEnabled, setIsAudioEnabled] = useState(false);
+  const [isHelpActive, setIsHelpActive] = useState(false);
+  const [progressCycle, setProgressCycle] = useState(0);
+
+  const t = translations[language];
+
+  const stepCount = useRef(0);
+  const stepId = useRef(0);
+  const helpStartTime = useRef(0);
+  const lastActionTime = useRef(Date.now());
+  const wakeLock = useRef<WakeLockSentinel | null>(null);
+
+  // Keep the document language in sync and remember the choice.
+  useEffect(() => {
+    document.documentElement.lang = language;
+    saveLanguage(language);
+  }, [language]);
+
+  // Keep the screen awake while the app is open.
+  useEffect(() => {
+    const requestWakeLock = async () => {
+      try {
+        if ('wakeLock' in navigator && document.visibilityState === 'visible') {
+          wakeLock.current = await navigator.wakeLock.request('screen');
+        }
+      } catch {
+        // Not supported or denied: not critical.
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void requestWakeLock();
+    };
+
+    void requestWakeLock();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      wakeLock.current?.release().catch(() => {});
+      wakeLock.current = null;
+    };
+  }, []);
 
   const toggleAudio = useCallback(() => {
     if (isAudioEnabled) {
@@ -42,322 +71,258 @@ export default function App() {
     setIsAudioEnabled(!isAudioEnabled);
   }, [isAudioEnabled]);
 
-  const requestWakeLock = useCallback(async () => {
-    try {
-      if ('wakeLock' in navigator) {
-        wakeLock.current = await (navigator as any).wakeLock.request('screen');
-      }
-    } catch (err) {
-      // Silently ignore errors
-    }
+  const resetSession = useCallback(() => {
+    setInstruction(null);
+    setHistory([]);
+    setIsHelpActive(false);
+    helpStartTime.current = 0;
+    stepCount.current = 0;
+    lastActionTime.current = Date.now();
   }, []);
 
-  const fetchNextInstruction = useCallback(async (timeSinceLastAction?: number, actionCount?: number, forceLang?: string) => {
-    try {
-      const currentLang = forceLang || language;
-      const hour = new Date().getHours();
-      let timeOfDay = "dag";
-      if (hour >= 6 && hour < 12) timeOfDay = "ochtend";
-      else if (hour >= 12 && hour < 18) timeOfDay = "middag";
-      else if (hour >= 18 && hour < 23) timeOfDay = "avond";
-      else timeOfDay = "nacht";
-
-      const response = await fetch('/api/generate-instruction', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ timeSinceLastAction, actionCount, timeOfDay, language: currentLang })
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setNextInstruction(data.instruction);
-      }
-    } catch (err) {
-      // Silently ignore to allow fallback usage
-    }
-  }, [language]);
-
-  // Pre-fetch the first instruction on mount
-  useEffect(() => {
-    fetchNextInstruction(undefined, 0);
-  }, [fetchNextInstruction]);
-
-  useEffect(() => {
-    requestWakeLock();
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        requestWakeLock();
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      if (wakeLock.current !== null) {
-        wakeLock.current.release().catch(() => {});
-        wakeLock.current = null;
-      }
-    };
-  }, [requestWakeLock]);
-
-  const getMicroAction = useCallback(() => {
+  const showNextStep = useCallback(() => {
     const now = Date.now();
     const timeSinceLast = now - lastActionTime.current;
     lastActionTime.current = now;
 
-    // Start or sustain the 30-second progressive calming element
-    if (!isHelpActive || now - helpStartTimeRef.current >= 30000) {
+    // Start or renew the 30-second progressive calming cycle.
+    if (!isHelpActive || now - helpStartTime.current >= HELP_CYCLE_MS) {
       setIsHelpActive(true);
-      helpStartTimeRef.current = now;
-      setProgressCycle(prev => prev + 1);
+      helpStartTime.current = now;
+      setProgressCycle((cycle) => cycle + 1);
     }
 
-    if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+    if ('vibrate' in navigator) {
       navigator.vibrate([200, 100, 200]);
     }
 
-    let newHistoryCount = history.length;
+    // Match the step to the user's pace and progress, without repeating
+    // what was shown recently.
+    const recent = [instruction?.text, ...history.map((step) => step.text)].filter(
+      (text): text is string => Boolean(text),
+    );
+    const text = pickInstruction(language, chooseIntensity(timeSinceLast, stepCount.current), recent);
+
     if (instruction) {
-      newHistoryCount++;
-      setHistory(prev => {
-        // Prevent duplicate consecutive entries if needed, but not strictly necessary
-        return [instruction, ...prev].slice(0, 3);
-      });
+      setHistory((prev) => [instruction, ...prev].slice(0, HISTORY_SIZE));
     }
+    stepId.current += 1;
+    setInstruction({ id: stepId.current, text });
+    stepCount.current += 1;
+  }, [instruction, history, isHelpActive, language]);
 
-    if (nextInstruction) {
-      setInstruction(nextInstruction);
-      setNextInstruction(""); // Clear used instruction
-      fetchNextInstruction(timeSinceLast, newHistoryCount); // Pre-fetch the next one
-    } else {
-      // Instant fallback if API is slow
-      const actions = language === "en" ? fallbackActionsEN : fallbackActionsNL;
-      const randomIndex = Math.floor(Math.random() * actions.length);
-      setInstruction(actions[randomIndex]);
-      fetchNextInstruction(timeSinceLast, newHistoryCount); // Still try to pre-fetch for the next click
-    }
-  }, [instruction, nextInstruction, fetchNextInstruction, history.length, language, isHelpActive]);
-
-  const handleReset = useCallback(() => {
-    setInstruction("");
-    setHistory([]);
-    setIsHelpActive(false);
-    helpStartTimeRef.current = 0;
-    lastActionTime.current = Date.now();
+  const handleFeelBetter = useCallback(() => {
+    resetSession();
     if (isAudioEnabled) {
       audioEngine.stop();
       setIsAudioEnabled(false);
     }
-  }, [isAudioEnabled]);
+  }, [resetSession, isAudioEnabled]);
+
+  const toggleLanguage = useCallback(() => {
+    resetSession();
+    setLanguage((current) => (current === 'nl' ? 'en' : 'nl'));
+  }, [resetSession]);
 
   return (
-    <div className="min-h-screen bg-[#292018] flex flex-col items-center justify-center p-6 select-none relative overflow-hidden">
-      {/* Language Toggle */}
-      <button
-        onClick={() => {
-          const newLang = language === "nl" ? "en" : "nl";
-          setLanguage(newLang);
-          setInstruction("");
-          setNextInstruction("");
-          setHistory([]);
-          setIsHelpActive(false);
-          helpStartTimeRef.current = 0;
-          fetchNextInstruction(undefined, 0, newLang);
-        }}
-        className="absolute top-6 left-6 p-3 z-50 text-[#b8a696] hover:text-[#f0e6db] transition-colors font-medium text-lg uppercase cursor-pointer"
-        aria-label="Verander taal / Change language"
-      >
-        {language}
-      </button>
-
-      {/* Emergency Contact */}
-      <a
-        href="tel:112"
-        className="absolute bottom-6 right-6 p-4 z-50 bg-red-900/30 text-red-200 hover:bg-red-900/50 hover:text-white transition-all rounded-full shadow-lg border border-red-900/50 flex items-center justify-center"
-        aria-label={language === "en" ? "Emergency Contact" : "Noodcontact"}
-        title={language === "en" ? "Emergency Contact (112)" : "Noodcontact (112)"}
-      >
-        <Phone size={24} />
-      </a>
-
-      {/* Chat Support */}
-      <a
-        href={language === "en" ? "https://findahelpline.com/" : "https://www.zelfmoord1813.be/chatten"}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="absolute bottom-6 left-6 p-4 z-50 bg-blue-900/30 text-blue-200 hover:bg-blue-900/50 hover:text-white transition-all rounded-full shadow-lg border border-blue-900/50 flex items-center justify-center"
-        aria-label={language === "en" ? "Find A Helpline" : "Zelfmoordlijn Chat"}
-        title={language === "en" ? "Find A Helpline" : "Zelfmoordlijn Chat"}
-      >
-        <MessageCircle size={24} />
-      </a>
-
-      {/* Audio Toggle */}
-      <button
-        onClick={toggleAudio}
-        className="absolute top-6 right-6 p-3 z-50 text-[#b8a696] hover:text-[#f0e6db] transition-colors cursor-pointer"
-        aria-label={isAudioEnabled ? "Zet geluid uit" : "Zet geluid aan"}
-      >
-        {isAudioEnabled ? <Volume2 size={28} /> : <VolumeX size={28} />}
-      </button>
-
-      {/* Subtle breathing background circle */}
-      <motion.div
-        className="absolute inset-0 pointer-events-none flex items-center justify-center z-0"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 2 }}
-      >
+    <MotionConfig reducedMotion="user">
+      <div className="min-h-dvh bg-[#292018] flex flex-col select-none relative overflow-hidden">
+        {/* Subtle breathing background circle */}
         <motion.div
-          className="w-[85vw] h-[85vw] max-w-[550px] max-h-[550px] rounded-full bg-[#c27c44]/30 blur-2xl"
-          animate={{ scale: [1, 1.15, 1], opacity: [0.5, 0.9, 0.5] }}
-          transition={{
-            duration: 8,
-            repeat: Infinity,
-            ease: "easeInOut"
-          }}
-        />
-      </motion.div>
+          className="absolute inset-0 pointer-events-none flex items-center justify-center z-0"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 2 }}
+          aria-hidden="true"
+        >
+          <motion.div
+            className="w-[85vw] h-[85vw] max-w-[550px] max-h-[550px] rounded-full bg-[#c27c44]/30 blur-2xl"
+            animate={{ scale: [1, 1.15, 1], opacity: [0.5, 0.9, 0.5] }}
+            transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+          />
+        </motion.div>
 
-      <div className="w-full max-w-md flex flex-col items-center gap-10 relative z-10">
-        <div className="relative w-full flex items-center justify-center">
-          {/* Subtle warm amber aura that blooms over 30s behind the Help me button */}
-          <AnimatePresence>
-            {isHelpActive && (
-              <motion.div
-                key={`aura-${progressCycle}`}
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 0.7, scale: 1.07 }}
-                exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.8 } }}
-                transition={{ duration: 30, ease: "easeInOut" }}
-                className="absolute -inset-2 rounded-3xl bg-[#c27c44]/25 blur-xl pointer-events-none -z-10"
-              />
-            )}
-          </AnimatePresence>
-
-          <motion.button 
-            key={`help-btn-${progressCycle}`}
-            onClick={getMicroAction}
-            initial={false}
-            animate={
-              isHelpActive
-                ? {
-                    scale: 1.045,
-                    backgroundColor: "#523c28",
-                    borderColor: "rgba(194, 124, 68, 0.65)",
-                    boxShadow: "0 14px 38px rgba(194, 124, 68, 0.22), 0 4px 14px rgba(0, 0, 0, 0.4)",
-                  }
-                : {
-                    scale: 1,
-                    backgroundColor: "#3f3226",
-                    borderColor: "#4d3e30",
-                    boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.4)",
-                  }
-            }
-            transition={{
-              duration: isHelpActive ? 30 : 0.8,
-              ease: "easeInOut",
-            }}
-            whileTap={{ scale: 0.98 }}
-            className="relative w-full py-10 text-[#f0e6db] text-3xl font-medium rounded-2xl shadow-lg border transition-colors flex flex-col items-center justify-center overflow-hidden cursor-pointer"
-            aria-label={language === "en" ? "Help me" : "Help me"}
+        <header className="relative z-20 flex items-center justify-between px-6 pt-6 short:pt-3">
+          <button
+            onClick={toggleLanguage}
+            className="p-3 text-[#b8a696] hover:text-[#f0e6db] transition-colors font-medium text-lg uppercase cursor-pointer"
+            aria-label={t.changeLanguage}
           >
-            {/* Subtle inner warm ambient gradient */}
-            <AnimatePresence>
-              {isHelpActive && (
-                <motion.div
-                  key={`inner-${progressCycle}`}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0, transition: { duration: 0.8 } }}
-                  transition={{ duration: 30, ease: "easeInOut" }}
-                  className="absolute inset-0 bg-gradient-to-b from-[#c27c44]/15 to-transparent pointer-events-none"
-                />
-              )}
-            </AnimatePresence>
+            {language}
+          </button>
 
-            {/* Button label */}
-            <span className="relative z-10 select-none tracking-wide">
-              {language === "en" ? "Help me" : "Help me"}
-            </span>
+          <button
+            onClick={toggleAudio}
+            className="p-3 text-[#b8a696] hover:text-[#f0e6db] transition-colors cursor-pointer"
+            aria-label={isAudioEnabled ? t.soundOff : t.soundOn}
+            aria-pressed={isAudioEnabled}
+          >
+            {isAudioEnabled ? <Volume2 size={28} /> : <VolumeX size={28} />}
+          </button>
+        </header>
 
-            {/* Non-intrusive 30-second progressive grounding line along button bottom */}
-            {isHelpActive && (
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-[#292018]/50 overflow-hidden pointer-events-none">
-                <motion.div
-                  key={`prog-bar-${progressCycle}`}
-                  initial={{ width: "0%" }}
-                  animate={{ width: "100%" }}
-                  transition={{ duration: 30, ease: "linear" }}
-                  className="h-full bg-[#c27c44]/75 rounded-full"
-                />
+        <main className="relative z-10 flex-1 flex items-center justify-center px-6">
+          <div className="w-full max-w-md flex flex-col items-center gap-10 short:gap-5">
+            <div className="relative w-full flex items-center justify-center">
+              {/* Warm amber aura that blooms over 30s behind the Help me button */}
+              <AnimatePresence>
+                {isHelpActive && (
+                  <motion.div
+                    key={`aura-${progressCycle}`}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 0.7, scale: 1.07 }}
+                    exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.8 } }}
+                    transition={{ duration: HELP_CYCLE_MS / 1000, ease: 'easeInOut' }}
+                    className="absolute -inset-2 rounded-3xl bg-[#c27c44]/25 blur-xl pointer-events-none -z-10"
+                  />
+                )}
+              </AnimatePresence>
+
+              <motion.button
+                onClick={showNextStep}
+                initial={false}
+                animate={
+                  isHelpActive
+                    ? {
+                        scale: 1.045,
+                        backgroundColor: '#523c28',
+                        borderColor: 'rgba(194, 124, 68, 0.65)',
+                        boxShadow: '0 14px 38px rgba(194, 124, 68, 0.22), 0 4px 14px rgba(0, 0, 0, 0.4)',
+                      }
+                    : {
+                        scale: 1,
+                        backgroundColor: '#3f3226',
+                        borderColor: '#4d3e30',
+                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.4)',
+                      }
+                }
+                transition={{ duration: isHelpActive ? HELP_CYCLE_MS / 1000 : 0.8, ease: 'easeInOut' }}
+                whileTap={{ scale: 0.98 }}
+                className="relative w-full py-10 short:py-7 text-[#f0e6db] text-3xl font-medium rounded-2xl border flex flex-col items-center justify-center overflow-hidden cursor-pointer"
+              >
+                {/* Inner warm ambient gradient */}
+                <AnimatePresence>
+                  {isHelpActive && (
+                    <motion.div
+                      key={`inner-${progressCycle}`}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0, transition: { duration: 0.8 } }}
+                      transition={{ duration: HELP_CYCLE_MS / 1000, ease: 'easeInOut' }}
+                      className="absolute inset-0 bg-gradient-to-b from-[#c27c44]/15 to-transparent pointer-events-none"
+                    />
+                  )}
+                </AnimatePresence>
+
+                <span className="relative z-10 tracking-wide">{t.help}</span>
+
+                {/* Non-intrusive 30-second grounding line along the button bottom */}
+                {isHelpActive && (
+                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-[#292018]/50 overflow-hidden pointer-events-none">
+                    <motion.div
+                      key={`prog-bar-${progressCycle}`}
+                      initial={{ width: '0%' }}
+                      animate={{ width: '100%' }}
+                      transition={{ duration: HELP_CYCLE_MS / 1000, ease: 'linear' }}
+                      className="h-full bg-[#c27c44]/75 rounded-full"
+                    />
+                  </div>
+                )}
+              </motion.button>
+            </div>
+
+            <div
+              className="min-h-[110px] short:min-h-[80px] flex items-center justify-center text-center px-2"
+              aria-live="polite"
+              aria-atomic="true"
+            >
+              <AnimatePresence mode="wait">
+                {instruction && (
+                  <motion.p
+                    key={instruction.id}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0, transition: { duration: 0.3 } }}
+                    transition={{ duration: 1.5, ease: 'easeInOut' }}
+                    className="text-[#f0e6db] text-2xl leading-relaxed"
+                  >
+                    {instruction.text}
+                  </motion.p>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {instruction && (
+              <div className="w-full flex flex-col gap-3">
+                <button
+                  onClick={showNextStep}
+                  className="w-full py-4 bg-[#3f3226]/80 hover:bg-[#4d3e30] active:bg-[#5c4a3b] text-[#f0e6db] text-lg font-medium rounded-2xl shadow transition-colors border border-[#4d3e30]/80 cursor-pointer"
+                >
+                  {t.oneMore}
+                </button>
+                <button
+                  onClick={handleFeelBetter}
+                  className="w-full py-3.5 text-[#b8a696] hover:text-[#f0e6db] active:text-white text-base font-medium transition-colors cursor-pointer"
+                >
+                  {t.feelBetter}
+                </button>
               </div>
             )}
-          </motion.button>
-        </div>
-
-        <div className="min-h-[110px] flex items-center justify-center text-center px-2">
-          <AnimatePresence mode="wait">
-            {instruction ? (
-              <motion.p
-                key={instruction}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0, transition: { duration: 0.3 } }}
-                transition={{ duration: 1.5, ease: "easeInOut" }}
-                className="text-[#f0e6db] text-2xl font-sans leading-relaxed"
-              >
-                {instruction}
-              </motion.p>
-            ) : null}
-          </AnimatePresence>
-        </div>
-
-        {instruction && (
-          <div className="w-full flex flex-col gap-3">
-            <button 
-              onClick={getMicroAction}
-              className="w-full py-4 bg-[#3f3226]/80 hover:bg-[#4d3e30] active:bg-[#5c4a3b] text-[#f0e6db] text-lg font-medium rounded-2xl shadow transition-colors border border-[#4d3e30]/80 cursor-pointer"
-            >
-              {language === "en" ? "One more" : "Nog eentje"}
-            </button>
-            <button 
-              onClick={handleReset}
-              className="w-full py-3.5 text-[#b8a696] hover:text-[#f0e6db] active:text-white text-base font-medium transition-colors cursor-pointer"
-            >
-              {language === "en" ? "I feel better" : "Ik voel me beter"}
-            </button>
           </div>
-        )}
-      </div>
+        </main>
 
-      {/* Log section */}
-      <div className="absolute bottom-6 left-0 right-0 flex flex-col items-center gap-1.5 z-10 pointer-events-none">
-        <AnimatePresence>
-          {history.length >= 3 && (
-            <motion.p
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 0.5, y: 0 }}
-              exit={{ opacity: 0 }}
-              className="text-[#c27c44] text-xs text-center max-w-xs mb-1 font-medium"
-            >
-              {language === "en" ? "You are safe, take a moment to thank yourself." : "Je bent veilig, neem een moment om jezelf te bedanken."}
-            </motion.p>
-          )}
-          {history.map((item, index) => (
-            <motion.p
-              key={`${item}-${index}`}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: Math.max(0.1, 0.4 - index * 0.15), y: 0 }}
-              exit={{ opacity: 0 }}
-              className="text-[#b8a696] text-xs text-center max-w-xs"
-            >
-              ✓ {item}
-            </motion.p>
-          ))}
-        </AnimatePresence>
+        {/* Log of completed steps; side padding keeps it clear of the contact buttons */}
+        <footer className="relative z-10 px-24 pb-6 pt-4">
+          <div className="min-h-[120px] flex flex-col items-center justify-end gap-1.5 pointer-events-none">
+            <AnimatePresence initial={false}>
+              {history.length >= HISTORY_SIZE && (
+                <motion.p
+                  key="safe"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 0.5, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="text-[#c27c44] text-xs text-center max-w-xs mb-1 font-medium"
+                >
+                  {t.safe}
+                </motion.p>
+              )}
+              {history.map((step, index) => (
+                <motion.p
+                  key={step.id}
+                  layout
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: Math.max(0.1, 0.4 - index * 0.15), y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="text-[#b8a696] text-xs text-center max-w-xs w-full truncate"
+                >
+                  ✓ {step.text}
+                </motion.p>
+              ))}
+            </AnimatePresence>
+          </div>
+        </footer>
+
+        {/* Contact buttons stay fixed in view, even when the page scrolls */}
+        <a
+          href={t.chatUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="fixed bottom-6 left-6 z-50 p-4 bg-blue-900/30 text-blue-200 hover:bg-blue-900/50 hover:text-white transition-all rounded-full shadow-lg border border-blue-900/50 flex items-center justify-center"
+          aria-label={t.chat}
+          title={t.chat}
+        >
+          <MessageCircle size={24} />
+        </a>
+
+        <a
+          href="tel:112"
+          className="fixed bottom-6 right-6 z-50 p-4 bg-red-900/30 text-red-200 hover:bg-red-900/50 hover:text-white transition-all rounded-full shadow-lg border border-red-900/50 flex items-center justify-center"
+          aria-label={t.emergency}
+          title={t.emergency}
+        >
+          <Phone size={24} />
+        </a>
       </div>
-    </div>
+    </MotionConfig>
   );
 }

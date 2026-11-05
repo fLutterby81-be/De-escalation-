@@ -1,67 +1,85 @@
+const NOISE_SECONDS = 8;
+const FADE_OUT_MS = 3000;
+
+/** Soft brown noise with a slow 8-second "breathing" swell. */
 export class AudioEngine {
   private ctx: AudioContext | null = null;
+  private noiseBuffer: AudioBuffer | null = null;
   private noiseSource: AudioBufferSourceNode | null = null;
   private masterGain: GainNode | null = null;
   private lfo: OscillatorNode | null = null;
 
   public isPlaying = false;
 
-  init() {
+  private getContext(): AudioContext {
     if (!this.ctx) {
-      this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const Ctx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      this.ctx = new Ctx();
     }
+    return this.ctx;
+  }
+
+  private getNoiseBuffer(ctx: AudioContext): AudioBuffer {
+    if (this.noiseBuffer) return this.noiseBuffer;
+
+    const length = ctx.sampleRate * NOISE_SECONDS;
+    const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+    const output = buffer.getChannelData(0);
+    let lastOut = 0;
+    for (let i = 0; i < length; i++) {
+      const white = Math.random() * 2 - 1;
+      lastOut = (lastOut + 0.02 * white) / 1.02;
+      output[i] = lastOut * 3.5;
+    }
+
+    // Remove the drift between the first and last sample so the loop point
+    // does not produce a soft click every few seconds.
+    const drift = output[length - 1] - output[0];
+    for (let i = 0; i < length; i++) {
+      output[i] -= drift * (i / (length - 1));
+    }
+
+    this.noiseBuffer = buffer;
+    return buffer;
   }
 
   play() {
-    this.init();
-    if (!this.ctx || this.isPlaying) return;
+    if (this.isPlaying) return;
+    const ctx = this.getContext();
     this.isPlaying = true;
 
-    if (this.ctx.state === 'suspended') {
-      this.ctx.resume();
+    if (ctx.state === "suspended") {
+      void ctx.resume();
     }
 
-    this.masterGain = this.ctx.createGain();
+    this.masterGain = ctx.createGain();
     this.masterGain.gain.value = 0;
-    this.masterGain.connect(this.ctx.destination);
+    this.masterGain.connect(ctx.destination);
 
-    // Generate Brown Noise (soothing, deep rumble)
-    const bufferSize = this.ctx.sampleRate * 2;
-    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
-    const output = buffer.getChannelData(0);
-    let lastOut = 0;
-    for (let i = 0; i < bufferSize; i++) {
-      const white = Math.random() * 2 - 1;
-      output[i] = (lastOut + (0.02 * white)) / 1.02;
-      lastOut = output[i];
-      output[i] *= 3.5; 
-    }
-
-    this.noiseSource = this.ctx.createBufferSource();
-    this.noiseSource.buffer = buffer;
+    this.noiseSource = ctx.createBufferSource();
+    this.noiseSource.buffer = this.getNoiseBuffer(ctx);
     this.noiseSource.loop = true;
 
-    // Lowpass filter to make it warmer
-    const filter = this.ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.value = 250; // Very soft, low frequency
+    // Lowpass filter to make it warmer.
+    const filter = ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.value = 250;
 
-    // Gain node for breathing amplitude modulation
-    const modGain = this.ctx.createGain();
+    // Gain node whose level is swept by the LFO (breathing modulation).
+    const modGain = ctx.createGain();
     modGain.gain.value = 0.5;
 
-    // LFO for slow breathing cycle (approx. 8 seconds)
-    this.lfo = this.ctx.createOscillator();
-    this.lfo.type = 'sine';
-    this.lfo.frequency.value = 1 / 8; 
+    this.lfo = ctx.createOscillator();
+    this.lfo.type = "sine";
+    this.lfo.frequency.value = 1 / 8;
 
-    // Connect LFO to modulate the gain
-    const lfoScale = this.ctx.createGain();
-    lfoScale.gain.value = 0.3; // Depth of the breathing modulation
-    this.lfo.connect(lfoScale);
-    lfoScale.connect(modGain.gain);
+    const lfoDepth = ctx.createGain();
+    lfoDepth.gain.value = 0.3;
+    this.lfo.connect(lfoDepth);
+    lfoDepth.connect(modGain.gain);
 
-    // Routing
     this.noiseSource.connect(filter);
     filter.connect(modGain);
     modGain.connect(this.masterGain);
@@ -69,26 +87,33 @@ export class AudioEngine {
     this.noiseSource.start();
     this.lfo.start();
 
-    // Fade in gracefully
-    this.masterGain.gain.setTargetAtTime(1, this.ctx.currentTime, 2);
+    // Fade in gracefully.
+    this.masterGain.gain.setTargetAtTime(1, ctx.currentTime, 2);
   }
 
   stop() {
     if (!this.ctx || !this.isPlaying || !this.masterGain) return;
     this.isPlaying = false;
 
-    // Fade out gracefully
-    this.masterGain.gain.setTargetAtTime(0, this.ctx.currentTime, 1);
-    
+    // Capture the current nodes: play() may create new ones during the fade.
+    const source = this.noiseSource;
+    const lfo = this.lfo;
+    const gain = this.masterGain;
+    this.noiseSource = null;
+    this.lfo = null;
+    this.masterGain = null;
+
+    gain.gain.setTargetAtTime(0, this.ctx.currentTime, 1);
+
     setTimeout(() => {
       try {
-        if (this.noiseSource) this.noiseSource.stop();
-        if (this.lfo) this.lfo.stop();
-        if (this.masterGain) this.masterGain.disconnect();
-      } catch (e) {
-        // Ignore if already stopped or disconnected
+        source?.stop();
+        lfo?.stop();
+        gain.disconnect();
+      } catch {
+        // Already stopped or disconnected.
       }
-    }, 3000);
+    }, FADE_OUT_MS);
   }
 }
 
