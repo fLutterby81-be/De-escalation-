@@ -3,7 +3,8 @@
 Een prikkelarme web-app voor acute overprikkeling of een "freeze"-reactie.
 Eén knop, **Help me**, geeft telkens één kleine fysieke stap. De app kiest de stap
 op basis van het tempo van de gebruiker en het aantal stappen dat al gezet is.
-Alles gebeurt in de browser: er is geen server en er gaat geen gegeven naar buiten.
+Alles gebeurt in de browser en er is geen server. Op Vercel telt Vercel Web Analytics
+anonieme paginabezoeken, zonder cookies. Wat iemand in de app doet, wordt niet bijgehouden.
 
 Hoe de volgende stap gekozen wordt:
 
@@ -44,6 +45,9 @@ npm run dev            # http://localhost:3000
 | `npm run lint`    | TypeScript-typecheck                              |
 
 De map `dist/` kan op elke statische host gezet worden.
+
+Vercel Web Analytics werkt alleen op Vercel en pas nadat Web Analytics in het
+Vercel-dashboard van het project is aangezet. Op andere hosts doet het niets.
 
 ## Buy me a coffee
 
