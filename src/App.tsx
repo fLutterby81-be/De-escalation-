@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, MotionConfig } from 'motion/react';
 import { Volume2, VolumeX, Phone, MessageCircle, Moon, Sun, Coffee } from 'lucide-react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { audioEngine } from './audio';
 import { type Language, getInitialLanguage, saveLanguage, translations } from './i18n';
 import { chooseIntensity, pickInstruction } from './instructions';
@@ -357,6 +358,7 @@ export default function App() {
           <Phone size={24} strokeWidth={1.75} />
         </a>
       </div>
+      <SpeedInsights />
     </MotionConfig>
   );
 }
