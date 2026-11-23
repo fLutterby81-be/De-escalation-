@@ -3,7 +3,8 @@
 Een prikkelarme web-app voor acute overprikkeling of een "freeze"-reactie.
 Eén knop, **Help me**, geeft telkens één kleine fysieke stap. De app kiest de stap
 op basis van het tempo van de gebruiker en het aantal stappen dat al gezet is.
-Alles gebeurt in de browser: er is geen server en er gaat geen gegeven naar buiten.
+Alles gebeurt in de browser en er is geen server. Op Vercel telt Vercel Web Analytics
+anonieme paginabezoeken, zonder cookies. Wat iemand in de app doet, wordt niet bijgehouden.
 
 Hoe de volgende stap gekozen wordt:
 
@@ -21,8 +22,7 @@ Verder bevat de app:
 - een licht, zacht ontwerp overdag en een gedimde donkere modus 's nachts;
   de donkere modus gaat aan tussen 21 en 7 uur of als het toestel in donkere modus staat;
 - een knop met een maan of zon om zelf te wisselen; die keuze wordt onthouden,
-  en wie terugkiest wat automatisch zou gelden, gaat terug naar automatisch;
-- een optionele knop "Buy me a coffee" op het rustige startscherm, nooit tijdens een hulpsessie.
+  en wie terugkiest wat automatisch zou gelden, gaat terug naar automatisch.
 
 ## Lokaal draaien
 
@@ -45,15 +45,8 @@ npm run dev            # http://localhost:3000
 
 De map `dist/` kan op elke statische host gezet worden.
 
-## Buy me a coffee
-
-De knop blijft verborgen tot er een link is. Zet je link op een van deze twee plaatsen:
-
-- in `src/config.ts`, bij `DEFAULT_BUY_ME_A_COFFEE_URL`;
-- of als omgevingsvariabele `VITE_BUY_ME_A_COFFEE_URL` tijdens de build,
-  bijvoorbeeld in de projectinstellingen van Vercel.
-
-Alleen links die met `https://` beginnen worden gebruikt.
+Vercel Web Analytics werkt alleen op Vercel en pas nadat Web Analytics in het
+Vercel-dashboard van het project is aangezet. Op andere hosts doet het niets.
 
 ## Structuur
 

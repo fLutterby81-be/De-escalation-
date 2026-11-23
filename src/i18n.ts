@@ -16,7 +16,6 @@ export const translations = {
     emergency: "Noodcontact (112)",
     chat: "Chat met de Zelfmoordlijn 1813",
     chatUrl: "https://www.zelfmoord1813.be/ik-heb-hulp-nodig/chat-met-de-zelfmoordlijn",
-    coffee: "Trakteer me op een koffie",
   },
   en: {
     help: "Help me",
@@ -31,7 +30,6 @@ export const translations = {
     emergency: "Emergency contact (112)",
     chat: "Find a helpline",
     chatUrl: "https://findahelpline.com/",
-    coffee: "Buy me a coffee",
   },
 } as const;
 
