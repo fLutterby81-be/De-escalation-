@@ -1,12 +1,11 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, MotionConfig } from 'motion/react';
-import { Volume2, VolumeX, Phone, MessageCircle, Moon, Sun, Coffee } from 'lucide-react';
+import { Volume2, VolumeX, Phone, MessageCircle, Moon, Sun } from 'lucide-react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 import { audioEngine } from './audio';
 import { type Language, getInitialLanguage, saveLanguage, translations } from './i18n';
 import { chooseIntensity, pickInstruction } from './instructions';
 import { useTheme } from './theme';
-import { BUY_ME_A_COFFEE_URL } from './config';
 
 /** Length of one progressive calming cycle on the Help me button. */
 const HELP_CYCLE_MS = 30_000;
@@ -286,11 +285,7 @@ export default function App() {
           </div>
         </main>
 
-        {/*
-         * Log of completed steps; side padding keeps it clear of the contact
-         * buttons. On the calm start screen the same spot holds the optional
-         * coffee link, which never shows during an active help session.
-         */}
+        {/* Log of completed steps; side padding keeps it clear of the contact buttons */}
         <footer className="relative z-10 px-24 pb-6 pt-4">
           <div className="min-h-[120px] flex flex-col items-center justify-end gap-1.5 pointer-events-none">
             <AnimatePresence initial={false}>
@@ -317,22 +312,6 @@ export default function App() {
                   ✓ {step.text}
                 </motion.p>
               ))}
-              {BUY_ME_A_COFFEE_URL && !instruction && history.length === 0 && (
-                <motion.a
-                  key="coffee"
-                  href={BUY_ME_A_COFFEE_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0, transition: { duration: 0.2 } }}
-                  transition={{ duration: 1.2, ease: 'easeInOut' }}
-                  className={`pointer-events-auto mb-3 inline-flex items-center justify-center gap-1.5 rounded-full bg-surface/70 hover:bg-surface px-3.5 py-2 text-xs font-semibold text-ink-soft hover:text-ink text-center ring-1 ring-inset ring-line transition-colors ${focusRing}`}
-                >
-                  <Coffee size={14} strokeWidth={1.75} aria-hidden="true" className="shrink-0" />
-                  {t.coffee}
-                </motion.a>
-              )}
             </AnimatePresence>
           </div>
         </footer>
